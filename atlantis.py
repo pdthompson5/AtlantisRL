@@ -56,7 +56,6 @@ def sigmoid(x):
 
 # softmax from: https://gist.github.com/etienne87/6803a65653975114e6c6f08bb25e1522
 def softmax(x):
-    
     probs = np.exp(x - np.max(x, axis=1, keepdims=True))
     probs /= np.sum(probs, axis=1, keepdims=True)
     return probs
@@ -299,15 +298,18 @@ env.close()
 # Things to try
     # Done: Expand action space to 3 -> Right-fire, left-fire, no-op -> In order to do this I will need softmax
     # Done: Keep logs of running mean and graph it
-    # Consider changing the input to include some history. A key point of difficulty in this game is figuring out how fast the ships are moving
-    # Figure out how long it takes to generate an episode vs updating the NN
-    # Try using my GPU
+    # Done: Figure out how long it takes to generate an episode vs updating the NN. 
+        # The fast majority of time spent here is in forward propagation
+    # Done: Try using my GPU -> Seems too challenging 
     # Try keeping the left gun in frame
     # Try eliminating downscaling
     # Try increasing the difficulty 
     # Change the plus to a minus in rmsprop update
     # Turn off sticky keys
     # Experiment with different batch sizes. Try 50
+
+# Seems challenging
+    # Consider changing the input to include some history. A key point of difficulty in this game is figuring out how fast the ships are moving
 
 # I think that increasing the size of the NN shouldn't matter much since backprop is not costly. It might make forward prop take longer :(
 
