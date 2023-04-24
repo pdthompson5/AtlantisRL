@@ -79,6 +79,7 @@ def policy_forward(x):
   # Input: X is the input to the nn, likely the state
 
   # TODO: What is h?
+  print(model["W1"].shape)
   h = np.dot(model['W1'], x) # (H x D) . (D x 1) = (H x 1) (200 x 1)
   h[h<0] = 0 # ReLU introduces non-linearity
   # ReLU -> if less then 0 then 0
