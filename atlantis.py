@@ -5,6 +5,9 @@ from typing import Tuple, Dict
 from matplotlib import pyplot as plt
 import csv
 import os
+import time
+
+# TODO: Cuda toolkit is required?
 
 
 # Things to do:
@@ -12,7 +15,7 @@ import os
 
 A = 4 # Action space: 0-3
 H = 200 # number of hidden layer neurons
-batch_size = 10 # used to perform a RMS prop param update every batch_size steps
+batch_size = 50 # used to perform a RMS prop param update every batch_size steps
 learning_rate = 1e-3 # Learning rate
 gamma = 0.99 # Discount factor
 decay_rate = 0.99 # decay factor for RMSProp leaky sum of grad^2
@@ -21,7 +24,7 @@ decay_rate = 0.99 # decay factor for RMSProp leaky sum of grad^2
 resume = False # resume training from previous checkpoint (from save.p  file)?
 render = False # render video output?
 
-save_name = "testing_saving"
+save_name = "testing_speed"
 save_dir = os.path.join("save_files", save_name)
 
 if not os.path.exists(save_dir):
@@ -59,16 +62,24 @@ def softmax(x):
 
 # TODO: Will I need to change this because of the larger action space?
 # TODO: The initial impl of this will just consider left or right fire, no center
+
+# Takes about 2 ms
 def policy_forward(x: np.ndarray) -> Tuple[float, np.ndarray]:
   """Forward propagation. Input is preprocessed input: 60x80 float column vector"""
+  
   if(len(x.shape)==1):
     x = x[np.newaxis,...]
 
+  t = time.time()
   hidden_states = x.dot(model['W1']) # (H x D) . (D x 1) = (H x 1) (200 x 1)
   hidden_states[hidden_states < 0] = 0 # ReLU introduces non-linearity
   logp = hidden_states.dot(model['W2']) # This is a logits function and outputs a decimal.   (1 x H) . (H x 1) = 1 (scalar)
+#   print((time.time()-t)*1000, ' ms, @non-softmax')
 #   sigmoid_prob = sigmoid(logp)  # squashes output to  between 0 & 1 range
+#   print(logp.shape)
+  
   probs = softmax(logp)
+  
 #   print(probs)
 #   print("sigmoid", sigmoid_prob)
   return probs, hidden_states # return probability of taking action 2 (RIGHTFIRE), and hidden state
@@ -104,6 +115,7 @@ def print_np_array(observation: np.ndarray):
 # TODO: Might need to handle screen flashes
 def preprocess(observation: np.ndarray):
     """ preprocess 210x160x3 uint8 frame into 4800 (60x80) float column vector """
+    # Takes an average of .06 ms
     observation = observation[:120] # Delete everything below row 121. Only the upper part of the screen is important
 
     #TODO: I might not be able to downscale   this much, might not be enough detail
@@ -135,15 +147,25 @@ reward_sum = 0
 episode_number = 0
 
 i = 0
+
+# Episode generate takes ~2.5 seconds
+    # Per total step env step takes 1ms, forward prop takes 2ms
+episode_start_times = time.time()
 while(True):
+    init_time = time.time()
     if render: env.render()
 
+    t  = time.time()
     cur_observation = preprocess(observation)
     observation_delta: np.ndarray = cur_observation - prev_observation if prev_observation is not None else np.zeros(D)
     prev_observation = cur_observation
 
+    # print((time.time()-t)*1000, ' ms, @prepo')
+
     # forward prop
+    # t  = time.time()
     (action_probs, hidden_states) = policy_forward(cur_observation)
+    # print((time.time()-t)*1000, ' ms, @forward')
 
     # sample next action given softmax'ed probabilities
     random = np.random.uniform()
@@ -157,6 +179,7 @@ while(True):
     # Just for safety
     if not action:
        action = 0 
+    # print(action)
 
     observation_deltas.append(observation_delta)
     hidden_states_stack.append(hidden_states)
@@ -174,55 +197,70 @@ while(True):
 
     # TODO: For some reason we need to no-op between actions. holding down the button doesn't work I guess
     # It seems like this is for preventing button spamming.
+    t  = time.time()
+    # Takes about 1ms
     observation, reward, terminated, truncated, info = env.step(action)
     reward_sum += reward
     rewards.append(reward) # record reward (has to be done after we call step() to get reward for previous action)
+    # print((time.time()-t)*1000, ' ms, @env.step')
+    # Takes about 2ms per step
+    # print((time.time()-init_time)*1000, ' ms, @whole.step')
 
     if terminated:
+        print((time.time()-episode_start_times)*1000, ' ms, @episode generated')
+
+        t  = time.time()
         episode_number += 1
         # stack together all inputs, hidden states, action gradients, and rewards for this episode
+        # Takes 45 ms
         ep_inputs = np.vstack(observation_deltas)
         ep_hidden_states = np.vstack(hidden_states_stack)
         epdlogp = np.vstack(dlogps)
         ep_rewards = np.vstack(rewards)
+        # print((time.time()-t)*1000, ' ms, @stack_conversion')
 
         observation_deltas, hidden_states_stack, dlogps, rewards = [],[],[],[] # reset array memory
 
 
-        # Discount and normalize rewards
+        # Discount and normalize rewards - 7ms
+        t  = time.time()
         discounted_ep_rewards = discount_rewards(ep_rewards)
         discounted_ep_rewards -= np.mean(discounted_ep_rewards)
         discounted_ep_rewards /= np.std(discounted_ep_rewards)
+        # print((time.time()-t)*1000, ' ms, @discounting rewards')
 
         # for reward in discounted_ep_rewards:
         #    print(reward)
 
-        # modulate the gradient with advantage
+        # modulate the gradient with advantage - Almost instant
         epdlogp *= discounted_ep_rewards
 
         # for dlogp in epdlogp:
         #    print(dlogp)
 
-
+        t  = time.time()
         grad = policy_backward(ep_hidden_states, ep_inputs, epdlogp) # Backpropagate the gradient 
+        # print((time.time()-t)*1000, ' ms, @backprop') - Takes about 30ms
 
         # for q, elm in grad.items():
         #    for j in elm:
         #       print(j)
         for k in model: grad_buffer[k] += grad[k] # accumulate grad over batch 
 
+        t  = time.time()
         if episode_number % batch_size == 0:
             for k,v in model.items():
                 g = grad_buffer[k] # gradient
                 rmsprop_cache[k] = decay_rate * rmsprop_cache[k] + (1 - decay_rate) * g**2
                 model[k] += learning_rate * g / (np.sqrt(rmsprop_cache[k]) + 1e-5)
                 grad_buffer[k] = np.zeros_like(v) # reset batch gradient buffer
-
+            # print((time.time()-t)*1000, ' ms, @rmsprop update') - about 10 ms at 50 batch size
+        
 
         running_reward = reward_sum if running_reward is None else running_reward * 0.99 + reward_sum * 0.01
         print ('resetting env. episode reward total was %f. running mean: %f' % (reward_sum, running_reward))
         running_means.append(running_reward)
-        if episode_number % 5 == 0: 
+        if episode_number % 100 == 0: 
            save_model()
            save_running_means()
            print(running_means)
@@ -231,6 +269,7 @@ while(True):
         prev_x = None
 
         print(f'ep {episode_number}: game finished')
+        episode_start_times = time.time()
     i += 1
     
 
@@ -259,11 +298,23 @@ env.close()
 # Things to try
     # Done: Expand action space to 3 -> Right-fire, left-fire, no-op -> In order to do this I will need softmax
     # Done: Keep logs of running mean and graph it
-    # Consider changing the input to include some history. A key point of difficulty in this game is figuring out how fast the ships are moving
-    # Figure out how long it takes to generate an episode vs updating the NN
-    # Try using my GPU
+    # Done: Figure out how long it takes to generate an episode vs updating the NN. 
+        # The fast majority of time spent here is in forward propagation
+    # Done: Try using my GPU -> Seems too challenging 
     # Try keeping the left gun in frame
     # Try eliminating downscaling
     # Try increasing the difficulty 
     # Change the plus to a minus in rmsprop update
     # Turn off sticky keys
+    # Experiment with different batch sizes. Try 50
+
+# Seems challenging
+    # Consider changing the input to include some history. A key point of difficulty in this game is figuring out how fast the ships are moving
+
+# I think that increasing the size of the NN shouldn't matter much since backprop is not costly. It might make forward prop take longer :(
+
+# Key Elements of this env
+    # The AI becomes good at the game when it learns how to predict the movement of the ships
+        # They move at different speeds
+    # Spam-firing is not allowed, you need no-ops between firing
+        # It appears that the AI implicitly learns this, the most common action is a no-op
