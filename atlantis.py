@@ -9,6 +9,9 @@ import time
 from numba import jit
 from scipy.special import softmax
 
+from numba import cuda
+print(cuda.gpus)
+
 # TODO: Cuda toolkit is required?
 
 
@@ -68,22 +71,21 @@ def softmax(x):
 
 
 
-# Takes about 2 ms
+# This is about 50% slower than the previous method on the cpu at least
 @jit(nopython=True)
 def policy_forward_jit(x: np.ndarray, model: np.ndarray) -> Tuple[float, np.ndarray]:
     """Forward propagation. Input is preprocessed input: 60x80 float column vector"""
     hidden_states = x.dot(model[0]) # (H x D) . (D x 1) = (H x 1) (200 x 1)
     # hidden_states[hidden_states < 0] = 0 # ReLU introduces non-linearity
-    for state in hidden_states[0]:
-        if state < 0:
-            state = 0
-    logp = hidden_states.dot(model[1]) # This is a logits function and outputs a decimal.   (1 x H) . (H x 1) = 1 (scalar)
+    for i, state in enumerate(hidden_states[0]):
+        hidden_states[0][i] = max(0.0, state)
+
+    return hidden_states.dot(model[1]), hidden_states # This is a logits function and outputs a decimal.   (1 x H) . (H x 1) = 1 (scalar)
     #   sigmoid_prob = sigmoid(logp)  # squashes output to  between 0 & 1 range
 
     # probs = np.exp(x - np.max(x, axis=1, keepdims=True))
     # probs /= np.sum(probs, axis=1, keepdims=True)
     # probs = softmax(logp)
-    return logp, hidden_states # return probability of taking action 2 (RIGHTFIRE), and hidden state
 
 def policy_forward(x: np.ndarray):
     if len(cur_observation.shape) == 1:
