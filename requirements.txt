@@ -1,3 +1,5 @@
 gymnasium[atari]
 numpy
 matplotlib
+numba
+scipy

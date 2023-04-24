@@ -1,11 +1,12 @@
 import numpy as np
 import pickle
 import gymnasium as gym
-from typing import Tuple, Dict
+from typing import Tuple, Dict, List    
 from matplotlib import pyplot as plt
 import csv
 import os
 import time
+from numba import jit
 
 # TODO: Cuda toolkit is required?
 
@@ -21,10 +22,10 @@ gamma = 0.99 # Discount factor
 decay_rate = 0.99 # decay factor for RMSProp leaky sum of grad^2
 
 # Config flags - video output and res
-resume = True # resume training from previous checkpoint (from save.p  file)?
+resume = False # resume training from previous checkpoint (from save.p  file)?
 render = False # render video output?
 
-save_name = "pretty_good_softmax"
+save_name = "array_model"
 save_dir = os.path.join("save_files", save_name)
 
 if not os.path.exists(save_dir):
@@ -33,9 +34,9 @@ if not os.path.exists(save_dir):
 D = 60 * 80 # input dimensionality: 60x80 grid
 
 def initialize_model():
-    model: Dict[str: np.ndarray] = {}
-    model['W1'] = np.random.randn(D,H) / np.sqrt(D) # "Xavier" initialization
-    model['W2'] = np.random.randn(H,A) / np.sqrt(H) # Shape will be H
+    model: List[np.ndarray] = []
+    model.append(np.random.randn(D,H) / np.sqrt(D)) # "Xavier" initialization
+    model.append(np.random.randn(H,A) / np.sqrt(H)) # Shape will be H
     return model
 
 def load_model():
@@ -63,31 +64,41 @@ def softmax(x):
 # TODO: Will I need to change this because of the larger action space?
 # TODO: The initial impl of this will just consider left or right fire, no center
 
-# Takes about 2 ms
-def policy_forward(x: np.ndarray) -> Tuple[float, np.ndarray]:
-  """Forward propagation. Input is preprocessed input: 60x80 float column vector"""
-  
-  if(len(x.shape)==1):
-    x = x[np.newaxis,...]
 
-  hidden_states = x.dot(model['W1']) # (H x D) . (D x 1) = (H x 1) (200 x 1)
-  hidden_states[hidden_states < 0] = 0 # ReLU introduces non-linearity
-  logp = hidden_states.dot(model['W2']) # This is a logits function and outputs a decimal.   (1 x H) . (H x 1) = 1 (scalar)
-#   sigmoid_prob = sigmoid(logp)  # squashes output to  between 0 & 1 range
-  probs = softmax(logp)
-#   print(probs)
-#   print("sigmoid", sigmoid_prob)
-  return probs, hidden_states # return probability of taking action 2 (RIGHTFIRE), and hidden state
+
+
+# Takes about 2 ms
+@jit(nopython=True)
+def policy_forward_jit(x: np.ndarray) -> Tuple[float, np.ndarray]:
+    """Forward propagation. Input is preprocessed input: 60x80 float column vector"""
+    hidden_states = x.dot(model[0]) # (H x D) . (D x 1) = (H x 1) (200 x 1)
+    # hidden_states[hidden_states < 0] = 0 # ReLU introduces non-linearity
+    for state in hidden_states:
+        if state < 0:
+            state = 0
+    logp = hidden_states.dot(model[1]) # This is a logits function and outputs a decimal.   (1 x H) . (H x 1) = 1 (scalar)
+    #   sigmoid_prob = sigmoid(logp)  # squashes output to  between 0 & 1 range
+
+    probs = np.exp(x - np.max(x, axis=1, keepdims=True))
+    probs /= np.sum(probs, axis=1, keepdims=True)
+    # probs = softmax(logp)
+    return probs, hidden_states # return probability of taking action 2 (RIGHTFIRE), and hidden state
+
+def policy_forward(x: np.ndarray):
+    if len(cur_observation.shape) == 1:
+        x = x[np.newaxis,...]
+    return policy_forward_jit(x)
+
 
 def policy_backward(eph: np.ndarray, epx: np.ndarray, epdlogp: np.ndarray):
   """ Manual implementation of a backward prop"""
   """ It takes an array of the hidden states that corresponds to all the images that were
   fed to the NN (for the entire episode, so a bunch of games) and their corresponding logp"""
   dW2 = eph.T.dot(epdlogp)
-  dh = epdlogp.dot(model['W2'].T)
+  dh = epdlogp.dot(model[1].T)
   dh[eph <= 0] = 0 # backpro prelu
   dW1 = epx.T.dot(dh)
-  return {'W1':dW1, 'W2':dW2}
+  return [dW1, dW2]
 
 
 
@@ -129,8 +140,8 @@ def discount_rewards(r):
   return discounted_r
 
 
-grad_buffer = { k : np.zeros_like(v) for k,v in model.items() } # update buffers that add up gradients over a batch
-rmsprop_cache = { k : np.zeros_like(v) for k,v in model.items() } # rmsprop memory
+grad_buffer = [np.zeros_like(v) for v in model ] # update buffers that add up gradients over a batch
+rmsprop_cache = [np.zeros_like(v) for v in model ] # rmsprop memory
 
 observation: np.ndarray
 (observation, info) = env.reset()
@@ -159,6 +170,7 @@ while(True):
 
     # forward prop
     # t  = time.time()
+
     (action_probs, hidden_states) = policy_forward(cur_observation)
     # print((time.time()-t)*1000, ' ms, @forward')
 
@@ -239,11 +251,11 @@ while(True):
         # for q, elm in grad.items():
         #    for j in elm:
         #       print(j)
-        for k in model: grad_buffer[k] += grad[k] # accumulate grad over batch 
+        for k in range(0, len(model)): grad_buffer[k] += grad[k] # accumulate grad over batch 
 
         t  = time.time()
         if episode_number % batch_size == 0:
-            for k,v in model.items():
+            for k,v in enumerate(model):
                 g = grad_buffer[k] # gradient
                 rmsprop_cache[k] = decay_rate * rmsprop_cache[k] + (1 - decay_rate) * g**2
                 model[k] += learning_rate * g / (np.sqrt(rmsprop_cache[k]) + 1e-5)
