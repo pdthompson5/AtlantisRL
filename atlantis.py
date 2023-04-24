@@ -7,10 +7,9 @@ import csv
 import os
 import time
 
-
 A = 4 # Action space: 0-3
 H = 200 # number of hidden layer neurons
-batch_size = 5 # used to perform a RMS prop param update every batch_size steps
+batch_size = 20 # used to perform a RMS prop param update every batch_size steps
 learning_rate = 1e-3 # Learning rate
 gamma = 0.99 # Discount factor
 decay_rate = 0.99 # decay factor for RMSProp leaky sum of grad^2
@@ -19,13 +18,13 @@ decay_rate = 0.99 # decay factor for RMSProp leaky sum of grad^2
 resume = False # resume training from previous checkpoint (from save.p  file)?
 render = False # render video output?
 
-save_name = "testing_speed"
+save_name = "adjusting_prepro"
 save_dir = os.path.join("save_files", save_name)
 
 if not os.path.exists(save_dir):
    os.makedirs(save_dir)
 
-D = 60 * 80 # input dimensionality: 60x80 grid
+D = 38 * 72 # input dimensionality: 52x80 grid
 
 def initialize_model():
     model: Dict[str: np.ndarray] = {}
@@ -60,7 +59,7 @@ def softmax(x):
 
 # Takes about 2 ms
 def policy_forward(x: np.ndarray) -> Tuple[float, np.ndarray]:
-  """Forward propagation. Input is preprocessed input: 60x80 float column vector"""
+  """Forward propagation. Input is preprocessed input: 52x80 float column vector"""
   
   if(len(x.shape)==1):
     x = x[np.newaxis,...]
@@ -96,24 +95,18 @@ def policy_backward(eph: np.ndarray, epx: np.ndarray, epdlogp: np.ndarray):
 render_mode = "human" if render else "rgb_array"
 env = gym.make("ALE/Atlantis-v5", render_mode=render_mode)
 
-def print_np_array(observation: np.ndarray):
-    for row in observation:
-        for col in row:
-            print(col, end=" ")
-        print()
-
-
-
 # TODO: Might need to handle screen flashes
+
 def preprocess(observation: np.ndarray):
     """ preprocess 210x160x3 uint8 frame into 4800 (60x80) float column vector """
     # Takes an average of .06 ms
-    observation = observation[:120] # Delete everything below row 121. Only the upper part of the screen is important
-
+    observation = observation[16:92, 8:152] # Delete all areas where the ships can never be
     #TODO: I might not be able to downscale   this much, might not be enough detail
     observation = observation[::2,::2,0] # downscale by factor of 2
     observation[observation != 0] = 1 # Make grayscale
-
+    # if(p % 400 == 0):
+    #     plt.imshow(observation)
+    #     plt.show()
     return observation.astype(float).ravel()
 
 def discount_rewards(r):
@@ -199,7 +192,7 @@ while(True):
     # print((time.time()-init_time)*1000, ' ms, @whole.step')
 
     if terminated:
-        print((time.time()-episode_start_times)*1000, ' ms, @episode generated')
+        # print((time.time()-episode_start_times)*1000, ' ms, @episode generated')
 
         t  = time.time()
         episode_number += 1
@@ -255,7 +248,7 @@ while(True):
         if episode_number % 100 == 0: 
            save_model()
            save_running_means()
-           print(running_means)
+        #    print(running_means)
         reward_sum = 0
         (observation, info) = env.reset() # reset env
         prev_x = None
@@ -273,30 +266,16 @@ while(True):
 
 
 
-# for i in range(10000):
-#     action = env.action_space.sample()  # agent policy that uses the observation and info
-#     observation, reward, terminated, truncated, info = env.step(action)
-#     # if reward > 0:
-#     if i % 1000 == 0: print(observation)
-
-#     if terminated or truncated:
-#         observation, info = env.reset()
-
-# TODO: Consider if we need to learn movement or if that can be implicit
-
-env.close()
-
-
 # Things to try
     # Done: Expand action space to 3 -> Right-fire, left-fire, no-op -> In order to do this I will need softmax
     # Done: Keep logs of running mean and graph it
     # Done: Figure out how long it takes to generate an episode vs updating the NN. 
         # The fast majority of time spent here is in forward propagation
     # Done: Try using my GPU -> Seems too challenging 
+    # Done: Increase preprocessing -> Determine if this improves episode generation times
     # Try keeping the left gun in frame
     # Try eliminating downscaling
     # Try increasing the difficulty 
-    # Change the plus to a minus in rmsprop update
     # Turn off sticky keys
     # Experiment with different batch sizes. Try 50
 
