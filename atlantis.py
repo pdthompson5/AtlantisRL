@@ -57,10 +57,10 @@ def sigmoid(x):
   return 1.0 / (1.0 + np.exp(-x)) # sigmoid "squashing" function to interval [0,1]
 
 # softmax from: https://gist.github.com/etienne87/6803a65653975114e6c6f08bb25e1522
-# def softmax(x):
-#     probs = np.exp(x - np.max(x, axis=1, keepdims=True))
-#     probs /= np.sum(probs, axis=1, keepdims=True)
-#     return probs
+def softmax(x):
+    probs = np.exp(x - np.max(x, axis=1, keepdims=True))
+    probs /= np.sum(probs, axis=1, keepdims=True)
+    return probs
 
 # TODO: Will I need to change this because of the larger action space?
 # TODO: The initial impl of this will just consider left or right fire, no center
@@ -70,11 +70,11 @@ def sigmoid(x):
 
 # Takes about 2 ms
 @jit(nopython=True)
-def policy_forward_jit(x: np.ndarray) -> Tuple[float, np.ndarray]:
+def policy_forward_jit(x: np.ndarray, model: np.ndarray) -> Tuple[float, np.ndarray]:
     """Forward propagation. Input is preprocessed input: 60x80 float column vector"""
     hidden_states = x.dot(model[0]) # (H x D) . (D x 1) = (H x 1) (200 x 1)
     # hidden_states[hidden_states < 0] = 0 # ReLU introduces non-linearity
-    for state in hidden_states:
+    for state in hidden_states[0]:
         if state < 0:
             state = 0
     logp = hidden_states.dot(model[1]) # This is a logits function and outputs a decimal.   (1 x H) . (H x 1) = 1 (scalar)
@@ -82,14 +82,16 @@ def policy_forward_jit(x: np.ndarray) -> Tuple[float, np.ndarray]:
 
     # probs = np.exp(x - np.max(x, axis=1, keepdims=True))
     # probs /= np.sum(probs, axis=1, keepdims=True)
-    probs = log_softmax(logp)
     # probs = softmax(logp)
-    return probs, hidden_states # return probability of taking action 2 (RIGHTFIRE), and hidden state
+    return logp, hidden_states # return probability of taking action 2 (RIGHTFIRE), and hidden state
 
 def policy_forward(x: np.ndarray):
     if len(cur_observation.shape) == 1:
         x = x[np.newaxis,...]
-    return policy_forward_jit(x)
+    logp, hidden_states = policy_forward_jit(x, model)
+    # print(logp)
+    # print(hidden_states)
+    return (softmax(logp), hidden_states)
 
 
 def policy_backward(eph: np.ndarray, epx: np.ndarray, epdlogp: np.ndarray):
@@ -216,7 +218,7 @@ while(True):
     # print((time.time()-init_time)*1000, ' ms, @whole.step')
 
     if terminated:
-        # print((time.time()-episode_start_times)*1000, ' ms, @episode generated')
+        print((time.time()-episode_start_times)*1000, ' ms, @episode generated')
         t  = time.time()
         episode_number += 1
         # stack together all inputs, hidden states, action gradients, and rewards for this episode
