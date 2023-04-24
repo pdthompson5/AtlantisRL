@@ -7,6 +7,7 @@ import csv
 import os
 import time
 from numba import jit
+from scipy.special import softmax
 
 # TODO: Cuda toolkit is required?
 
@@ -56,10 +57,10 @@ def sigmoid(x):
   return 1.0 / (1.0 + np.exp(-x)) # sigmoid "squashing" function to interval [0,1]
 
 # softmax from: https://gist.github.com/etienne87/6803a65653975114e6c6f08bb25e1522
-def softmax(x):
-    probs = np.exp(x - np.max(x, axis=1, keepdims=True))
-    probs /= np.sum(probs, axis=1, keepdims=True)
-    return probs
+# def softmax(x):
+#     probs = np.exp(x - np.max(x, axis=1, keepdims=True))
+#     probs /= np.sum(probs, axis=1, keepdims=True)
+#     return probs
 
 # TODO: Will I need to change this because of the larger action space?
 # TODO: The initial impl of this will just consider left or right fire, no center
@@ -79,8 +80,9 @@ def policy_forward_jit(x: np.ndarray) -> Tuple[float, np.ndarray]:
     logp = hidden_states.dot(model[1]) # This is a logits function and outputs a decimal.   (1 x H) . (H x 1) = 1 (scalar)
     #   sigmoid_prob = sigmoid(logp)  # squashes output to  between 0 & 1 range
 
-    probs = np.exp(x - np.max(x, axis=1, keepdims=True))
-    probs /= np.sum(probs, axis=1, keepdims=True)
+    # probs = np.exp(x - np.max(x, axis=1, keepdims=True))
+    # probs /= np.sum(probs, axis=1, keepdims=True)
+    probs = log_softmax(logp)
     # probs = softmax(logp)
     return probs, hidden_states # return probability of taking action 2 (RIGHTFIRE), and hidden state
 
