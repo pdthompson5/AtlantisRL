@@ -1,14 +1,16 @@
 import numpy as np
 import pickle
 import gymnasium as gym
-from typing import Tuple
+from typing import Tuple, Dict
 from matplotlib import pyplot as plt
+import csv
+import os
 
 
 # Things to do:
 # Save necessary information from episode generation 
 
-
+A = 4 # Action space: 0-3
 H = 200 # number of hidden layer neurons
 batch_size = 10 # used to perform a RMS prop param update every batch_size steps
 learning_rate = 1e-3 # Learning rate
@@ -16,47 +18,69 @@ gamma = 0.99 # Discount factor
 decay_rate = 0.99 # decay factor for RMSProp leaky sum of grad^2
 
 # Config flags - video output and res
-resume = True # resume training from previous checkpoint (from save.p  file)?
-render = True # render video output?
+resume = False # resume training from previous checkpoint (from save.p  file)?
+render = False # render video output?
+
+save_name = "testing_saving"
+save_dir = os.path.join("save_files", save_name)
+
+if not os.path.exists(save_dir):
+   os.makedirs(save_dir)
 
 D = 60 * 80 # input dimensionality: 60x80 grid
 
 def initialize_model():
-    model = {}
-    model['W1'] = np.random.randn(H,D) / np.sqrt(D) # "Xavier" initialization - Shape will be H x D
-    model['W2'] = np.random.randn(H) / np.sqrt(H) # Shape will be H
+    model: Dict[str: np.ndarray] = {}
+    model['W1'] = np.random.randn(D,H) / np.sqrt(D) # "Xavier" initialization
+    model['W2'] = np.random.randn(H,A) / np.sqrt(H) # Shape will be H
     return model
 
-def save_model():
-    pickle.dump(model, open('save.p', 'wb'))
 def load_model():
-    return pickle.load(open('save.p', 'rb'))
-
+    return pickle.load(open(os.path.join(save_dir, 'save.p'), 'rb'))
+def load_running_means():
+   return pickle.load(open(os.path.join(save_dir, 'running_means.p'), 'rb'))
 
 model = initialize_model() if not resume else load_model()
+running_means = [] if not resume else load_running_means()
+
+def save_model():
+    pickle.dump(model, open(os.path.join(save_dir, 'save.p'), 'wb'))
+def save_running_means():
+    pickle.dump(running_means, open(os.path.join(save_dir, 'running_means.p'), "wb"))
 
 def sigmoid(x):
   return 1.0 / (1.0 + np.exp(-x)) # sigmoid "squashing" function to interval [0,1]
+
+# softmax from: https://gist.github.com/etienne87/6803a65653975114e6c6f08bb25e1522
+def softmax(x):
+    probs = np.exp(x - np.max(x, axis=1, keepdims=True))
+    probs /= np.sum(probs, axis=1, keepdims=True)
+    return probs
 
 # TODO: Will I need to change this because of the larger action space?
 # TODO: The initial impl of this will just consider left or right fire, no center
 def policy_forward(x: np.ndarray) -> Tuple[float, np.ndarray]:
   """Forward propagation. Input is preprocessed input: 60x80 float column vector"""
-  # TODO: What is h?
-  hidden_states = np.dot(model['W1'], x) # (H x D) . (D x 1) = (H x 1) (200 x 1)
-  hidden_states[hidden_states < 0] = 0 # ReLU introduces non-linearity
-  logp = np.dot(model['W2'], hidden_states) # This is a logits function and outputs a decimal.   (1 x H) . (H x 1) = 1 (scalar)
-  prob = sigmoid(logp)  # squashes output to  between 0 & 1 range
-  return prob, hidden_states # return probability of taking action 2 (RIGHTFIRE), and hidden state
+  if(len(x.shape)==1):
+    x = x[np.newaxis,...]
 
-def policy_backward(eph, epx, epdlogp):
+  hidden_states = x.dot(model['W1']) # (H x D) . (D x 1) = (H x 1) (200 x 1)
+  hidden_states[hidden_states < 0] = 0 # ReLU introduces non-linearity
+  logp = hidden_states.dot(model['W2']) # This is a logits function and outputs a decimal.   (1 x H) . (H x 1) = 1 (scalar)
+#   sigmoid_prob = sigmoid(logp)  # squashes output to  between 0 & 1 range
+  probs = softmax(logp)
+#   print(probs)
+#   print("sigmoid", sigmoid_prob)
+  return probs, hidden_states # return probability of taking action 2 (RIGHTFIRE), and hidden state
+
+def policy_backward(eph: np.ndarray, epx: np.ndarray, epdlogp: np.ndarray):
   """ Manual implementation of a backward prop"""
   """ It takes an array of the hidden states that corresponds to all the images that were
   fed to the NN (for the entire episode, so a bunch of games) and their corresponding logp"""
-  dW2 = np.dot(eph.T, epdlogp).ravel()
-  dh = np.outer(epdlogp, model['W2'])
+  dW2 = eph.T.dot(epdlogp)
+  dh = epdlogp.dot(model['W2'].T)
   dh[eph <= 0] = 0 # backpro prelu
-  dW1 = np.dot(dh.T, epx)
+  dW1 = epx.T.dot(dh)
   return {'W1':dW1, 'W2':dW2}
 
 
@@ -119,24 +143,37 @@ while(True):
     prev_observation = cur_observation
 
     # forward prop
-    (action_prob, hidden_states) = policy_forward(cur_observation)
+    (action_probs, hidden_states) = policy_forward(cur_observation)
 
-    # sample next action
-    action = 2 if np.random.uniform() < action_prob else 3
-    if i % 2 != 0:
-        action = 0
+    # sample next action given softmax'ed probabilities
+    random = np.random.uniform()
+    running_total_prob = 0
+    for index, action_prob in enumerate(action_probs[0]):
+        running_total_prob += action_prob
+        if random <= running_total_prob:
+           action = index
+           break
 
+    # Just for safety
+    if not action:
+       action = 0 
 
     observation_deltas.append(observation_delta)
     hidden_states_stack.append(hidden_states)
 
-    y = 1 if action == 2 else 0 # y is the "ground truth"
-    dlogps.append(y - action_prob) # grad that encourages the action that was taken to be taken (see http://cs231n.github.io/neural-networks-2/#losses if confused)
+    dlogsoftmax = action_probs.copy()
+    # This represents the difference between the action probabilities that we received and action probabilities that 
+    # would always result in the action that we chose
+    dlogsoftmax[0,action] -= 1
+    # print(dlogsoftmax)
+    # TODO: For some reason I need to invert this -> The reason why is the plus sign in rms prop updates
+    dlogsoftmax[0] *= -1
+    # print(dlogsoftmax)
+    dlogps.append(dlogsoftmax)
 
 
     # TODO: For some reason we need to no-op between actions. holding down the button doesn't work I guess
     # It seems like this is for preventing button spamming.
-
     observation, reward, terminated, truncated, info = env.step(action)
     reward_sum += reward
     rewards.append(reward) # record reward (has to be done after we call step() to get reward for previous action)
@@ -184,14 +221,17 @@ while(True):
 
         running_reward = reward_sum if running_reward is None else running_reward * 0.99 + reward_sum * 0.01
         print ('resetting env. episode reward total was %f. running mean: %f' % (reward_sum, running_reward))
-        if episode_number % 100 == 0: pickle.dump(model, open('save.p', 'wb'))
+        running_means.append(running_reward)
+        if episode_number % 5 == 0: 
+           save_model()
+           save_running_means()
+           print(running_means)
         reward_sum = 0
         (observation, info) = env.reset() # reset env
         prev_x = None
 
         print(f'ep {episode_number}: game finished')
     i += 1
-    
     
 
 
@@ -217,4 +257,13 @@ env.close()
 
 
 # Things to try
-    # Let it figure out itself that it can't button mash. Only it to no-op. How do I expand this to more actions spaces
+    # Done: Expand action space to 3 -> Right-fire, left-fire, no-op -> In order to do this I will need softmax
+    # Done: Keep logs of running mean and graph it
+    # Consider changing the input to include some history. A key point of difficulty in this game is figuring out how fast the ships are moving
+    # Figure out how long it takes to generate an episode vs updating the NN
+    # Try using my GPU
+    # Try keeping the left gun in frame
+    # Try eliminating downscaling
+    # Try increasing the difficulty 
+    # Change the plus to a minus in rmsprop update
+    # Turn off sticky keys

@@ -94,6 +94,7 @@ def policy_backward(eph, epx, epdlogp):
   """ Manual implementation of a backward prop"""
   """ It takes an array of the hidden states that corresponds to all the images that were
   fed to the NN (for the entire episode, so a bunch of games) and their corresponding logp"""
+  print(epdlogp.shape)
   dW2 = np.dot(eph.T, epdlogp).ravel() #each state times delta J?
   dh = np.outer(epdlogp, model['W2'])
   dh[eph <= 0] = 0 # backpro prelu
@@ -202,7 +203,6 @@ while True:
     if episode_number % batch_size == 0:
       for k,v in model.items():
         g = grad_buffer[k] # gradient
-        print(g.shape)
         rmsprop_cache[k] = decay_rate * rmsprop_cache[k] + (1 - decay_rate) * g**2
         model[k] += learning_rate * g / (np.sqrt(rmsprop_cache[k]) + 1e-5)
         grad_buffer[k] = np.zeros_like(v) # reset batch gradient buffer
