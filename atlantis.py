@@ -74,6 +74,7 @@ def policy_forward(x: np.ndarray) -> Tuple[float, np.ndarray]:
   hidden_states[hidden_states < 0] = 0 # ReLU introduces non-linearity
   logp = hidden_states.dot(model['W2']) # This is a logits function and outputs a decimal.   (1 x H) . (H x 1) = 1 (scalar)
 #   sigmoid_prob = sigmoid(logp)  # squashes output to  between 0 & 1 range
+  print(logp.shape)
   probs = softmax(logp)
 #   print(probs)
 #   print("sigmoid", sigmoid_prob)
