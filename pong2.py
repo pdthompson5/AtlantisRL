@@ -77,9 +77,10 @@ def policy_forward(x):
   
   return p, h # return probability of taking action 2, and hidden state
 
-def policy_backward(eph, epdlogp):
+def policy_backward(eph: np.ndarray, epx, epdlogp):
   """ backward pass. (eph is array of intermediate hidden states) """
-  dW2 = eph.T.dot(epdlogp)  
+  dW2 = eph.T.dot(epdlogp)
+  print(dW2.shape)  
   dh = epdlogp.dot(model['W2'].T)
   dh[eph <= 0] = 0 # backpro prelu
   
@@ -145,9 +146,10 @@ while True:
   #softmax loss gradient
   # This subtracts 1 from the probability of the one that you chose... interesting
   dlogsoftmax = aprob.copy()
-  print(dlogsoftmax)
+  # print(dlogsoftmax)
+  # Am I accidentally going in the wrong direction?
   dlogsoftmax[0,a] -= 1 #-discounted reward 
-  print(dlogsoftmax)
+  # print(dlogsoftmax)
   dlogps.append(dlogsoftmax)
 
 
@@ -176,7 +178,7 @@ while True:
     epr = np.vstack(drs)
     xs,hs,dlogps,drs = [],[],[],[] # reset array memory
     
-    print(epdlogp.shape)
+    # print(epdlogp.shape)
 
     # compute the discounted reward backwards through time
     discounted_epr = discount_rewards(epr)
@@ -185,7 +187,7 @@ while True:
     discounted_epr /= np.std(discounted_epr)
 
     epdlogp *= discounted_epr # modulate the gradient with advantage (PG magic happens right here.)
-    grad = policy_backward(eph, epdlogp)
+    grad = policy_backward(eph, epx, epdlogp)
     for k in model: grad_buffer[k] += grad[k] # accumulate grad over batch
 
     # perform rmsprop parameter update every batch_size episodes

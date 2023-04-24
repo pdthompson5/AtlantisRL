@@ -1,14 +1,16 @@
 import numpy as np
 import pickle
 import gymnasium as gym
-from typing import Tuple
+from typing import Tuple, Dict
 from matplotlib import pyplot as plt
+import csv
+import os
 
 
 # Things to do:
 # Save necessary information from episode generation 
 
-A = 4 # Action space -> 0-3
+A = 4 # Action space: 0-3
 H = 200 # number of hidden layer neurons
 batch_size = 10 # used to perform a RMS prop param update every batch_size steps
 learning_rate = 1e-3 # Learning rate
@@ -19,21 +21,32 @@ decay_rate = 0.99 # decay factor for RMSProp leaky sum of grad^2
 resume = False # resume training from previous checkpoint (from save.p  file)?
 render = False # render video output?
 
+save_name = "testing_saving"
+save_dir = os.path.join("save_files", save_name)
+
+if not os.path.exists(save_dir):
+   os.makedirs(save_dir)
+
 D = 60 * 80 # input dimensionality: 60x80 grid
 
 def initialize_model():
-    model = {}
+    model: Dict[str: np.ndarray] = {}
     model['W1'] = np.random.randn(D,H) / np.sqrt(D) # "Xavier" initialization
     model['W2'] = np.random.randn(H,A) / np.sqrt(H) # Shape will be H
     return model
 
-def save_model():
-    pickle.dump(model, open('save.p', 'wb'))
 def load_model():
-    return pickle.load(open('save.p', 'rb'))
-
+    return pickle.load(open(os.path.join(save_dir, 'save.p'), 'rb'))
+def load_running_means():
+   return pickle.load(open(os.path.join(save_dir, 'running_means.p'), 'rb'))
 
 model = initialize_model() if not resume else load_model()
+running_means = [] if not resume else load_running_means()
+
+def save_model():
+    pickle.dump(model, open(os.path.join(save_dir, 'save.p'), 'wb'))
+def save_running_means():
+    pickle.dump(running_means, open(os.path.join(save_dir, 'running_means.p'), "wb"))
 
 def sigmoid(x):
   return 1.0 / (1.0 + np.exp(-x)) # sigmoid "squashing" function to interval [0,1]
@@ -56,18 +69,18 @@ def policy_forward(x: np.ndarray) -> Tuple[float, np.ndarray]:
   logp = hidden_states.dot(model['W2']) # This is a logits function and outputs a decimal.   (1 x H) . (H x 1) = 1 (scalar)
 #   sigmoid_prob = sigmoid(logp)  # squashes output to  between 0 & 1 range
   probs = softmax(logp)
-  print(probs)
+#   print(probs)
 #   print("sigmoid", sigmoid_prob)
   return probs, hidden_states # return probability of taking action 2 (RIGHTFIRE), and hidden state
 
-def policy_backward(eph, epx, epdlogp):
+def policy_backward(eph: np.ndarray, epx: np.ndarray, epdlogp: np.ndarray):
   """ Manual implementation of a backward prop"""
   """ It takes an array of the hidden states that corresponds to all the images that were
   fed to the NN (for the entire episode, so a bunch of games) and their corresponding logp"""
-  dW2 = np.dot(eph.T, epdlogp).ravel()
-  dh = np.outer(epdlogp, model['W2'])
+  dW2 = eph.T.dot(epdlogp)
+  dh = epdlogp.dot(model['W2'].T)
   dh[eph <= 0] = 0 # backpro prelu
-  dW1 = np.dot(dh.T, epx)
+  dW1 = epx.T.dot(dh)
   return {'W1':dW1, 'W2':dW2}
 
 
@@ -152,6 +165,10 @@ while(True):
     # This represents the difference between the action probabilities that we received and action probabilities that 
     # would always result in the action that we chose
     dlogsoftmax[0,action] -= 1
+    # print(dlogsoftmax)
+    # TODO: For some reason I need to invert this -> The reason why is the plus sign in rms prop updates
+    dlogsoftmax[0] *= -1
+    # print(dlogsoftmax)
     dlogps.append(dlogsoftmax)
 
 
@@ -204,14 +221,17 @@ while(True):
 
         running_reward = reward_sum if running_reward is None else running_reward * 0.99 + reward_sum * 0.01
         print ('resetting env. episode reward total was %f. running mean: %f' % (reward_sum, running_reward))
-        if episode_number % 100 == 0: pickle.dump(model, open('save.p', 'wb'))
+        running_means.append(running_reward)
+        if episode_number % 5 == 0: 
+           save_model()
+           save_running_means()
+           print(running_means)
         reward_sum = 0
         (observation, info) = env.reset() # reset env
         prev_x = None
 
         print(f'ep {episode_number}: game finished')
     i += 1
-    
     
 
 
@@ -237,4 +257,13 @@ env.close()
 
 
 # Things to try
-    # Expand action space to 3 -> Right-fire, left-fire, no-op -> In order to do this I will need softmax
+    # Done: Expand action space to 3 -> Right-fire, left-fire, no-op -> In order to do this I will need softmax
+    # Done: Keep logs of running mean and graph it
+    # Consider changing the input to include some history. A key point of difficulty in this game is figuring out how fast the ships are moving
+    # Figure out how long it takes to generate an episode vs updating the NN
+    # Try using my GPU
+    # Try keeping the left gun in frame
+    # Try eliminating downscaling
+    # Try increasing the difficulty 
+    # Change the plus to a minus in rmsprop update
+    # Turn off sticky keys
