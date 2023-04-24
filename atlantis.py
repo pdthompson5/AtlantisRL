@@ -7,15 +7,10 @@ import csv
 import os
 import time
 
-# TODO: Cuda toolkit is required?
-
-
-# Things to do:
-# Save necessary information from episode generation 
 
 A = 4 # Action space: 0-3
 H = 200 # number of hidden layer neurons
-batch_size = 50 # used to perform a RMS prop param update every batch_size steps
+batch_size = 5 # used to perform a RMS prop param update every batch_size steps
 learning_rate = 1e-3 # Learning rate
 gamma = 0.99 # Discount factor
 decay_rate = 0.99 # decay factor for RMSProp leaky sum of grad^2
@@ -71,25 +66,22 @@ def policy_forward(x: np.ndarray) -> Tuple[float, np.ndarray]:
     x = x[np.newaxis,...]
 
   t = time.time()
-  hidden_states = x.dot(model['W1']) # (H x D) . (D x 1) = (H x 1) (200 x 1)
+  hidden_states = np.dot(x, model['W1']) # TODO: This is the slow part of this function
   hidden_states[hidden_states < 0] = 0 # ReLU introduces non-linearity
-  logp = hidden_states.dot(model['W2']) # This is a logits function and outputs a decimal.   (1 x H) . (H x 1) = 1 (scalar)
+  logp = np.dot(hidden_states, model['W2']) # This is a logits function and outputs a decimal.   (1 x H) . (H x 1) = 1 (scalar)
 #   print((time.time()-t)*1000, ' ms, @non-softmax')
 #   sigmoid_prob = sigmoid(logp)  # squashes output to  between 0 & 1 range
 #   print(logp.shape)
-  
-  probs = softmax(logp)
-  
 #   print(probs)
 #   print("sigmoid", sigmoid_prob)
-  return probs, hidden_states # return probability of taking action 2 (RIGHTFIRE), and hidden state
+  return softmax(logp), hidden_states # return probability of taking action 2 (RIGHTFIRE), and hidden state
 
 def policy_backward(eph: np.ndarray, epx: np.ndarray, epdlogp: np.ndarray):
   """ Manual implementation of a backward prop"""
   """ It takes an array of the hidden states that corresponds to all the images that were
   fed to the NN (for the entire episode, so a bunch of games) and their corresponding logp"""
-  dW2 = eph.T.dot(epdlogp)
-  dh = epdlogp.dot(model['W2'].T)
+  dW2 = np.dot(eph.T, epdlogp)
+  dh = np.dot(epdlogp, model['W2'].T)
   dh[eph <= 0] = 0 # backpro prelu
   dW1 = epx.T.dot(dh)
   return {'W1':dW1, 'W2':dW2}
