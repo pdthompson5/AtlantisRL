@@ -56,6 +56,7 @@ def sigmoid(x):
 
 # softmax from: https://gist.github.com/etienne87/6803a65653975114e6c6f08bb25e1522
 def softmax(x):
+    
     probs = np.exp(x - np.max(x, axis=1, keepdims=True))
     probs /= np.sum(probs, axis=1, keepdims=True)
     return probs
@@ -70,12 +71,16 @@ def policy_forward(x: np.ndarray) -> Tuple[float, np.ndarray]:
   if(len(x.shape)==1):
     x = x[np.newaxis,...]
 
+  t = time.time()
   hidden_states = x.dot(model['W1']) # (H x D) . (D x 1) = (H x 1) (200 x 1)
   hidden_states[hidden_states < 0] = 0 # ReLU introduces non-linearity
   logp = hidden_states.dot(model['W2']) # This is a logits function and outputs a decimal.   (1 x H) . (H x 1) = 1 (scalar)
+  print((time.time()-t)*1000, ' ms, @non-softmax')
 #   sigmoid_prob = sigmoid(logp)  # squashes output to  between 0 & 1 range
   print(logp.shape)
+  
   probs = softmax(logp)
+  
 #   print(probs)
 #   print("sigmoid", sigmoid_prob)
   return probs, hidden_states # return probability of taking action 2 (RIGHTFIRE), and hidden state
