@@ -21,10 +21,10 @@ gamma = 0.99 # Discount factor
 decay_rate = 0.99 # decay factor for RMSProp leaky sum of grad^2
 
 # Config flags - video output and res
-resume = True # resume training from previous checkpoint (from save.p  file)?
+resume = False # resume training from previous checkpoint (from save.p  file)?
 render = False # render video output?
 
-save_name = "pretty_good_softmax"
+save_name = "testing_speed"
 save_dir = os.path.join("save_files", save_name)
 
 if not os.path.exists(save_dir):
@@ -75,9 +75,9 @@ def policy_forward(x: np.ndarray) -> Tuple[float, np.ndarray]:
   hidden_states = x.dot(model['W1']) # (H x D) . (D x 1) = (H x 1) (200 x 1)
   hidden_states[hidden_states < 0] = 0 # ReLU introduces non-linearity
   logp = hidden_states.dot(model['W2']) # This is a logits function and outputs a decimal.   (1 x H) . (H x 1) = 1 (scalar)
-  print((time.time()-t)*1000, ' ms, @non-softmax')
+#   print((time.time()-t)*1000, ' ms, @non-softmax')
 #   sigmoid_prob = sigmoid(logp)  # squashes output to  between 0 & 1 range
-  print(logp.shape)
+#   print(logp.shape)
   
   probs = softmax(logp)
   
@@ -208,7 +208,8 @@ while(True):
     # print((time.time()-init_time)*1000, ' ms, @whole.step')
 
     if terminated:
-        # print((time.time()-episode_start_times)*1000, ' ms, @episode generated')
+        print((time.time()-episode_start_times)*1000, ' ms, @episode generated')
+
         t  = time.time()
         episode_number += 1
         # stack together all inputs, hidden states, action gradients, and rewards for this episode
