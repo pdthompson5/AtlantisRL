@@ -1,4 +1,0 @@
-Trained on 2000 episodes
-Doesn't seem to be improving
-60x80 with limited actions space
-seems to only like using the right gun
