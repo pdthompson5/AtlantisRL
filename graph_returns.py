@@ -8,7 +8,6 @@ def load_running_means():
    return running_means
 
 save_name = "delta_proper_small_batch"
-# save_name = "delta_proper_10_batch_copy"
 save_dir = os.path.join("save_files", save_name)
 
 running_means = load_running_means()

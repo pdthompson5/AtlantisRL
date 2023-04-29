@@ -5,7 +5,7 @@ from typing import Tuple, Dict
 import os
 from gymnasium.wrappers.record_video import RecordVideo
 
-save_name = os.path.join("no_downscaling")
+save_name = os.path.join("delta_proper_small_batch")
 save_dir = os.path.join("save_files", save_name)
 
 if not os.path.exists(save_dir):
@@ -61,7 +61,7 @@ while(episode_number < 100):
 
     # forward prop
     # (action_probs, hidden_states) = policy_forward(observation_delta)
-    (action_probs, hidden_states) = policy_forward(cur_observation)
+    (action_probs, hidden_states) = policy_forward(observation_delta)
 
     # sample next action given softmax'ed probabilities
     random = np.random.uniform()
@@ -82,7 +82,9 @@ while(episode_number < 100):
     observation, reward, terminated, truncated, info = env.step(action)
     reward_sum += reward
 
-    if terminated or reward_sum > 2_000_000:
+    if terminated or truncated or reward_sum > 2_000_000:
+        if(truncated):
+           print("Truncated")
         episode_number += 1
         
         print ('resetting env. episode reward total was %f' % (reward_sum))
