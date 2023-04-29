@@ -3,38 +3,18 @@ import pickle
 import gymnasium as gym
 from typing import Tuple, Dict
 import os
-import time
 from gymnasium.wrappers.record_video import RecordVideo
 
-
-# Hyperparameters
-batch_size = 20 # used to perform a RMS prop param update every batch_size steps
-learning_rate = 1e-3 # Learning rate
-gamma = 0.99 # Discount factor
-decay_rate = 0.99 # decay factor for RMSProp leaky sum of grad^2
-
-# Config flags
-resume = True # resume training from previous checkpoint
-render = False # render video output
 save_name = os.path.join("no_downscaling")
 save_dir = os.path.join("save_files", save_name)
 
 if not os.path.exists(save_dir):
    os.makedirs(save_dir)
 
-A = 4 # Action space: 0-3 [0: NOOP, 1: FIRE, 2: RIGHTFIRE, 3: LEFTFIRE]
-H = 200 # number of hidden layer neurons
 D = 76 * 144 # input dimensionality: 76x144 grid
-
-
-
 def load_model():
     return pickle.load(open(os.path.join(save_dir, 'save.p'), 'rb'))
-def load_running_means():
-   return pickle.load(open(os.path.join(save_dir, 'running_means.p'), 'rb'))
-
 model = load_model()
-
 
 # softmax from: https://gist.github.com/etienne87/6803a65653975114e6c6f08bb25e1522
 def softmax(x):
@@ -49,13 +29,10 @@ def policy_forward(x: np.ndarray) -> Tuple[float, np.ndarray]:
 
   hidden_states = np.dot(x, model['W1']) 
   hidden_states[hidden_states < 0] = 0 # ReLU introduces non-linearity
-  logp = np.dot(hidden_states, model['W2']) # This is a logits function and outputs a decimal.   (A x H) . (H x A) = A
+  logp = np.dot(hidden_states, model['W2'])
   return softmax(logp), hidden_states
 
-
-
-
-render_mode = "human" if render else "rgb_array"
+render_mode = "rgb_array"
 env = gym.make("ALE/Atlantis-v5", render_mode=render_mode)
 
 def preprocess(observation: np.ndarray):
@@ -65,9 +42,6 @@ def preprocess(observation: np.ndarray):
     observation[observation != 0] = 1 # Make grayscale
 
     return observation.astype(float).ravel()
-
-
-
 
 observation: np.ndarray
 (observation, info) = env.reset()
@@ -96,13 +70,7 @@ while(episode_number < 100):
         running_total_prob += action_prob
         if random <= running_total_prob:
            action = index
-           break
-    # action = 0
-    # max_prob = 0
-    # for index, action_prob in enumerate(action_probs[0]):
-    #    if action_prob > max_prob:
-    #       max_prob = action_prob
-    #       action = index  
+           break 
     
     # Just for safety
     if not action:
@@ -110,11 +78,6 @@ while(episode_number < 100):
 
     if i % 10000 == 0:
         print(f"Current reward: {reward_sum}")
-        if reward_sum == prev_checkpoint_reward:
-          print("Manually terminating. Environment broken")
-          should_terminate = True
-          print(f"truncated: {truncated}")
-        prev_checkpoint_reward = reward_sum
 
     observation, reward, terminated, truncated, info = env.step(action)
     reward_sum += reward
