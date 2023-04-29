@@ -5,7 +5,7 @@ from typing import Tuple, Dict
 import os
 from gymnasium.wrappers.record_video import RecordVideo
 
-save_name = os.path.join("delta_proper_small_batch")
+save_name = os.path.join("model1")
 save_dir = os.path.join("save_files", save_name)
 
 if not os.path.exists(save_dir):

@@ -17,7 +17,7 @@ resume = True # resume training from previous checkpoint (from save.p  file)?
 render = True # render video output?
 should_truncate = False # Truncates episodes to 100k steps
 
-save_name = "delta_proper_small_batch"
+save_name = "model2"
 save_dir = os.path.join("save_files", save_name)
 
 if not os.path.exists(save_dir):

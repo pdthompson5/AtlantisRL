@@ -11,6 +11,10 @@ The main entry point for this project is `atlantis.py`. It can be used to train 
 
 `graph_returns.py` can be used to generate graphs of the average running returns over training for a given model.
 
+## Pre-trained models
+Included in this repository are three pre-trained models. `model1` is the best trained model. It is capable of consistent infinite games. `model2` is capable of infinite games, but it is not consistent. `pixels_only` is a converged model that utilizes the pixels of the game as input rather than the difference between the pixels. To use this last model modify line 122 of `atlantis.py` to 
+`(action_probs, hidden_states) = policy_forward(cur_observation)`.
+
 ## Running infinite episodes
 To run infinite episodes, you must disable episode truncation in Gymnasium. You can accomplish this via the following steps:
 1. Install the requirements
