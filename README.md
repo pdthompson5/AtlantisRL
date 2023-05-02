@@ -1,5 +1,5 @@
 # AtlantisRL
-This project is a implementation of the REINFORCE policy gradient algorithm for training an agent to perform well at the game Atlantis for the Atari 2600. It utilizes OpenAI Gymnasium for its environment. 
+This project is a implementation of the REINFORCE policy gradient algorithm for training an agent to perform well at the game Atlantis for the Atari 2600. It utilizes OpenAI Gymnasium for its environment. A video of a trained model playing the game can be found here: [https://youtu.be/OGztMCp0YdY](https://youtu.be/OGztMCp0YdY)
 
 ## Dependencies
 The python requirements for running this project are listed in `requirements.txt`. You may also need to install Atari ROMs for Gymnasium. To prevent conflicts, I recommend installing these requirements in a virtual environment.
